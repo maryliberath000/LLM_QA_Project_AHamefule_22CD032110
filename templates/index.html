@@ -1,45 +1,57 @@
-<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
-    <title>LLM Q&A</title>
+    <meta charset="utf-8" />
+    <title>LLM Q&A Web GUI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link
       rel="stylesheet"
       href="{{ url_for('static', filename='style.css') }}"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
   </head>
   <body>
     <div class="container">
-      <h1>LLM Question & Answering</h1>
-      <form method="POST">
-        <label for="question"><strong>Enter your question</strong></label>
-        <input
-          type="text"
-          id="question"
-          name="question"
-          placeholder="Ask anything..."
-          required
-        />
-        <button type="submit">Ask</button>
+      <h1>LLM Question & Answer</h1>
+
+      <form method="post" class="qa-form">
+        <label for="question">Enter your question</label>
+        <textarea id="question" name="question" rows="3" required>
+{{ question if question }}</textarea
+        >
+        <div class="form-row">
+          <button type="submit">Ask</button>
+        </div>
       </form>
 
-      {% if error %}
-      <div class="error">{{ error }}</div>
-      {% endif %} {% if processed %}
-      <h2>Processed question</h2>
-      <pre>{{ processed }}</pre>
-      {% endif %} {% if prompt %}
-      <h2>Prompt sent to LLM</h2>
-      <pre>{{ prompt }}</pre>
-      {% endif %} {% if answer %}
-      <h2>LLM answer</h2>
-      <div class="answer">{{ answer }}</div>
-      {% endif %} {% if raw %}
-      <h2>Raw response (truncated)</h2>
-      <pre>{{ raw | safe }}</pre>
+      {% with messages = get_flashed_messages(with_categories=true) %} {% if
+      messages %}
+      <div class="messages">
+        {% for category, msg in messages %}
+        <div class="flash {{ category }}">{{ msg }}</div>
+        {% endfor %}
+      </div>
+      {% endif %} {% endwith %} {% if processed %}
+      <section class="results">
+        <h2>Processed Question</h2>
+        <pre>{{ processed }}</pre>
+
+        <h2>Prompt Sent to LLM</h2>
+        <pre>{{ prompt }}</pre>
+
+        <h2>LLM Answer</h2>
+        <pre>{{ answer }}</pre>
+
+        <h2>Raw Response (truncated)</h2>
+        <pre>{{ raw | string | truncate(1000, True, '...') }}</pre>
+      </section>
       {% endif %}
+
+      <footer>
+        <small
+          >Make sure your OPENAI_API_KEY (or other provider keys) are configured
+          on the host.</small
+        >
+      </footer>
     </div>
   </body>
 </html>
