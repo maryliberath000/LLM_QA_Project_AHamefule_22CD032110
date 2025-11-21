@@ -1,90 +1,79 @@
-
+# app.py
 import os
-from flask import Flask, render_template, request, redirect, url_for, flash
 import re
-import textwrap
+from flask import Flask, request, render_template, jsonify
+from openai import OpenAI
 
 app = Flask(__name__)
-app.secret_key = os.getenv("FLASK_SECRET", "dev-secret-key")  # change in production
 
-# Preprocess (same rules as CLI)
-def preprocess_question(question: str) -> (str, list):
-    q = question.strip()
-    q_lower = q.lower()
-    q_clean = re.sub(r'[^\w\s]', ' ', q_lower)
-    q_clean = re.sub(r'\s+', ' ', q_clean).strip()
-    tokens = q_clean.split()
-    return q_clean, tokens
+def preprocess_question(question: str) -> str:
+    q = question.lower()
+    q = re.sub(r"[^\w\s]", "", q)
+    q = re.sub(r"\s+", " ", q).strip()
+    return q
 
-def build_prompt(processed_question: str) -> str:
-    return textwrap.dedent(f"""
-    You are a helpful assistant. Answer concisely.
+def construct_prompt(processed_q: str) -> str:
+    return f"You are a helpful assistant. Answer concisely.\nQuestion: {processed_q}\nAnswer:"
 
-    Question:
-    {processed_question}
-
-    Answer:
-    """).strip()
-
-def call_llm(prompt: str, max_tokens: int = 256, temperature: float = 0.2):
-    # Use OpenAI by default. Swap this for other providers if needed.
-    try:
-        import openai
-    except Exception as e:
-        raise RuntimeError("openai package required. Install with `pip install openai`.") from e
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("Please set OPENAI_API_KEY environment variable.")
-    openai.api_key = api_key
-
-    # Use ChatCompletion first, fallback if needed
-    try:
-        resp = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        text = resp["choices"][0]["message"]["content"].strip()
-        return {"text": text, "raw": resp}
-    except Exception:
-        resp = openai.Completion.create(
-            model="text-davinci-003",
-            prompt=prompt,
-            max_tokens=max_tokens,
-            temperature=temperature,
-        )
-        text = resp["choices"][0]["text"].strip()
-        return {"text": text, "raw": resp}
+def call_llm(prompt: str) -> dict:
+    client = OpenAI()  # requires OPENAI_API_KEY in environment
+    resp = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": prompt}
+        ],
+        temperature=0.2,
+        max_tokens=300,
+    )
+    content = resp.choices[0].message.content.strip()
+    return {"answer": content, "raw": resp.model_dump()}
 
 @app.route("/", methods=["GET", "POST"])
 def index():
+    answer = None
+    raw = None
+    processed = None
+    prompt = None
+    error = None
+
     if request.method == "POST":
-        question = request.form.get("question", "").strip()
-        if not question:
-            flash("Please enter a question.", "warning")
-            return redirect(url_for("index"))
-
-        processed, tokens = preprocess_question(question)
-        prompt = build_prompt(processed)
+        user_q = request.form.get("question", "").strip()
+        processed = preprocess_question(user_q)
+        prompt = construct_prompt(processed)
         try:
-            llm_result = call_llm(prompt)
-            answer = llm_result["text"]
-            raw = llm_result["raw"]
+            result = call_llm(prompt)
+            answer = result["answer"]
+            raw = result["raw"]
         except Exception as e:
-            answer = ""
-            raw = {"error": str(e)}
-            flash(f"Error calling LLM: {e}", "danger")
+            error = f"Error calling LLM: {e}"
 
-        return render_template("index.html",
-                               question=question,
-                               processed=processed,
-                               tokens=tokens,
-                               prompt=prompt,
-                               answer=answer,
-                               raw=raw)
-    return render_template("index.html")
+    return render_template(
+        "index.html",
+        answer=answer,
+        raw=raw,
+        processed=processed,
+        prompt=prompt,
+        error=error
+    )
+
+@app.route("/api/ask", methods=["POST"])
+def api_ask():
+    data = request.get_json(force=True)
+    user_q = data.get("question", "")
+    processed = preprocess_question(user_q)
+    prompt = construct_prompt(processed)
+    try:
+        result = call_llm(prompt)
+        return jsonify({
+            "processed": processed,
+            "prompt": prompt,
+            "answer": result["answer"],
+            "raw": result["raw"],
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    # Use debug=False for production
-    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 8501)), debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
