@@ -1,17 +1,3 @@
-"""
-app.py - Flask web UI for LLM Q&A
-Run:
-  export FLASK_APP=app.py
-  flask run
-or
-  python app.py
-
-Environment:
-  - For OpenAI: set OPENAI_API_KEY
-
-Notes:
-  - Very small, single-file Flask app that renders templates/index.html
-"""
 
 import os
 from flask import Flask, render_template, request, redirect, url_for, flash
